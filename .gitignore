@@ -1,0 +1,20 @@
+#metadata
+.DS_Store
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*/__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+
+# App cache
+cache/
+
+# benchmark csv
+vrp_*
+
+#Environmental Variables
+D:\Hackathons\SIH 2026\qpso_cvrptw-master (1)\qpso_cvrptw-master\vrp-dashboard\.env.local
+

@@ -1,0 +1,24 @@
+# Python 3.10–3.12 compatible runtime dependencies.
+# Upper bounds prevent unexpected breaking major releases while allowing
+# security and bug-fix updates within each supported dependency family.
+
+numpy>=2.0,<3
+pandas>=2.2,<3
+networkx>=3.2,<4
+osmnx>=2.0,<3
+geopandas>=0.14,<2
+shapely>=2.0,<3
+requests>=2.31,<3
+matplotlib>=3.8,<4
+streamlit>=1.40,<2
+pytorch
+
+fastapi>=0.115,<1
+pydantic>=2.7,<3
+uvicorn[standard]>=0.30,<1
+
+scipy>=1.13,<2
+
+# The web dashboard is installed separately with:
+#   cd vrp-dashboard
+#   npm ci
