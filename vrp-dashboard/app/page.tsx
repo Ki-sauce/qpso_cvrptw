@@ -261,7 +261,7 @@ export default function VRPDashboard() {
                 <Slider 
                   value={customersN} 
                   onValueChange={(v) => safeSetArray(v, setCustomersN)} 
-                  min={4} max={40} step={1} 
+                  min={4} max={500} step={1} 
                   className="cursor-grab active:cursor-grabbing"
                 />
               </div>
@@ -275,7 +275,7 @@ export default function VRPDashboard() {
                   <Slider 
                     value={vehicles} 
                     onValueChange={(v) => safeSetArray(v, setVehicles)} 
-                    min={1} max={10} step={1} 
+                    min={1} max={200} step={1} 
                     className="cursor-grab active:cursor-grabbing"
                   />
                 </div>
@@ -287,7 +287,7 @@ export default function VRPDashboard() {
                   <Slider 
                     value={capacity} 
                     onValueChange={(v) => safeSetArray(v, setCapacity)} 
-                    min={5} max={50} step={1} 
+                    min={5} max={100} step={1} 
                     className="cursor-grab active:cursor-grabbing"
                   />
                 </div>
@@ -348,7 +348,7 @@ export default function VRPDashboard() {
                   <Slider 
                     value={particles} 
                     onValueChange={(v) => safeSetArray(v, setParticles)} 
-                    min={10} max={100} step={10} 
+                    min={10} max={1000} step={10} 
                     className="cursor-grab active:cursor-grabbing"
                   />
                 </div>
@@ -360,7 +360,7 @@ export default function VRPDashboard() {
                   <Slider 
                     value={iterations} 
                     onValueChange={(v) => safeSetArray(v, setIterations)} 
-                    min={20} max={300} step={20} 
+                    min={20} max={1000} step={20} 
                     className="cursor-grab active:cursor-grabbing"
                   />
                 </div>
