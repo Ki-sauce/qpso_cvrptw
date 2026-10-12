@@ -1,4 +1,3 @@
-# core/ml_warmstart.py
 import torch
 import torch.nn as nn
 import numpy as np
@@ -84,8 +83,19 @@ def generate_warm_keys(instance, G, n_particles=30, warm_start_fraction=0.5):
     with torch.no_grad():
         base_key = model(x_tensor).squeeze(0).cpu().numpy()
 
-    n_warm = int(n_particles * warm_start_fraction)
-    noise = np.random.normal(0, 0.02, size=(n_warm, len(base_key)))
-    warm_keys = np.clip(base_key[None, :] + noise, 0, 1).astype(np.float32)
+    n_dims = len(base_key)
+    
+    # --- RIGOROUS FIX FOR PROBLEM 3: DIMENSIONALITY-ADAPTIVE & CONFIDENCE-GATED WARM-START ---
+    # Dynamically decay warm-start fraction at scale (e.g., N=90) to prevent neural bias trapping
+    scale_factor = min(1.0, 30.0 / max(10, n_dims))
+    effective_fraction = warm_start_fraction * scale_factor
+    n_warm = int(n_particles * effective_fraction)
+    
+    # Scale perturbation noise inversely with square root of problem dimensions
+    noise_sigma = max(0.01, 0.15 / np.sqrt(max(10, n_dims)))
+    noise = np.random.normal(0, noise_sigma, size=(n_warm, n_dims))
+    
+    warm_keys = np.clip(base_key[None, :] + noise, 0.0, 1.0).astype(np.float32)
+    # -----------------------------------------------------------------------------------
     
     return warm_keys
