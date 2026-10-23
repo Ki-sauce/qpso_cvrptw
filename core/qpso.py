@@ -1,18 +1,14 @@
 import numpy as np
 import os
-from concurrent.futures import ThreadPoolExecutor
 from core.vrp import evaluate_routes_kernel
 
-def _thread_evaluate(args):
-    """Fast evaluation of direct customer permutations."""
-    (
-        particle_position, dist_matrix, time_matrix, 
-        demands, tw_starts, tw_ends, service_times, 
-        v_cap, n_veh, d_idx, 
-        t_wt, d_wt, disp_s, lat_pen
-    ) = args
-    
-    # Convert continuous particle position to a discrete customer permutation via argsort
+def _evaluate_particle(
+    particle_position, dist_matrix, time_matrix, 
+    demands, tw_starts, tw_ends, service_times, 
+    v_cap, n_veh, d_idx, 
+    t_wt, d_wt, disp_s, lat_pen
+):
+    """Evaluates a single particle's 1D position vector using argsort decoding."""
     sorted_order_indices = np.argsort(particle_position)
     
     route_lens_list = []
@@ -49,12 +45,12 @@ def _thread_evaluate(args):
     route_flat_arr = np.array(route_flat_list, dtype=np.int64)
     route_lens_arr = np.array(route_lens_list, dtype=np.int64)
     
-    obj, t_time, d_m, s_time, w_time, tw_p, lat = evaluate_routes_kernel(
+    obj, _, _, _, _, _, _ = evaluate_routes_kernel(
         route_flat_arr, route_lens_arr, demands, tw_starts, tw_ends, service_times,
         dist_matrix, time_matrix, float(v_cap), float(t_wt), float(d_wt),
         float(disp_s), float(lat_pen)
     )
-    return float(obj), route_flat_list
+    return float(obj)
 
 
 class QPSO:
@@ -65,7 +61,6 @@ class QPSO:
         self.evaluate = evaluate
         self.n_particles = n_particles
         self.iterations = iterations
-        self.max_workers = max_workers or min(os.cpu_count() or 2, 8)
         self.rng = np.random.default_rng(seed)
         
         self.dist_matrix = dist_matrix
@@ -81,78 +76,96 @@ class QPSO:
         self.distance_weight = distance_weight
         
     def optimize(self, dimensions, initial_position=None, initial_population=None):
-        particles = self.rng.uniform(0, 1, (self.n_particles, dimensions))
+        M = self.n_particles
+        D = dimensions
+        
+        # Initialize swarm positions spread cleanly in [0, 1]
+        particles = self.rng.uniform(0.0, 1.0, (M, D))
         
         if initial_population is not None:
             init_pop = np.asarray(initial_population, dtype=float)
-            n_init = min(len(init_pop), self.n_particles)
+            n_init = min(len(init_pop), M)
             particles[:n_init] = np.clip(init_pop[:n_init], 0.0, 1.0)
         elif initial_position is not None:
             initial_position = np.asarray(initial_position, dtype=float)
             particles[0] = np.clip(initial_position, 0.0, 1.0)
             
         pbest = particles.copy()
+        pbest_scores = np.full(M, np.inf)
         
-        worker_args_template = (
+        eval_args = (
             self.dist_matrix, self.time_matrix, 
             self.demands, self.tw_starts, self.tw_ends, self.service_times, 
             float(self.vehicle_capacity), int(self.num_vehicles), int(self.depot_idx),
             float(self.time_weight), float(self.distance_weight), 32400.0, 10000.0
         )
         
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            initial_args = [(particles[i],) + worker_args_template for i in range(self.n_particles)]
-            initial_results = list(executor.map(_thread_evaluate, initial_args))
+        # Sequential inner evaluation loop (eliminates GIL multi-threading bottleneck)
+        for i in range(M):
+            pbest_scores[i] = _evaluate_particle(particles[i], *eval_args)
             
-            pbest_scores = np.array([res[0] for res in initial_results])
-            gbest_idx = np.argmin(pbest_scores)
-            gbest = pbest[gbest_idx].copy()
-            gbest_score = pbest_scores[gbest_idx]
+        gbest_idx = np.argmin(pbest_scores)
+        gbest = pbest[gbest_idx].copy()
+        gbest_score = pbest_scores[gbest_idx]
+        
+        history = [gbest_score]
+        
+        for it in range(self.iterations):
+            progress = it / max(1, self.iterations - 1)
+            # Contraction-Expansion coefficient decay
+            alpha = 1.0 - 0.7 * progress
             
-            history = [gbest_score]
-            stagnation_counter = 0
+            # Elite Mean Best calculation
+            sorted_indices = np.argsort(pbest_scores)
+            n_elite = max(5, int(0.3 * M))
+            elite_indices = sorted_indices[:n_elite]
+            elite_pbest = pbest[elite_indices]
+            elite_scores = pbest_scores[elite_indices]
             
-            for it in range(self.iterations):
-                progress = it / max(1, self.iterations - 1)
-                alpha = 1.0 - 0.8 * progress
+            ptp = np.ptp(elite_scores)
+            denom = ptp if ptp > 1e-8 else 1.0
+            score_diffs = elite_scores - elite_scores[0]
+            exp_scores = np.exp(-score_diffs / denom)
+            weights = exp_scores / np.sum(exp_scores)
+            mbest = np.sum(elite_pbest * weights[:, np.newaxis], axis=0)
+            
+            for i in range(M):
+                phi = self.rng.uniform(0.0, 1.0, D)
+                p = phi * pbest[i] + (1.0 - phi) * gbest
                 
-                sorted_indices = np.argsort(pbest_scores)
-                n_elite = max(5, int(0.3 * self.n_particles))
-                elite_indices = sorted_indices[:n_elite]
-                elite_pbest = pbest[elite_indices]
-                elite_scores = pbest_scores[elite_indices]
+                u = self.rng.uniform(1e-10, 1.0 - 1e-10, D)
+                sign = np.where(self.rng.random(D) > 0.5, 1.0, -1.0)
                 
-                score_diffs = elite_scores - elite_scores[0]
-                exp_scores = np.exp(-score_diffs / (np.ptp(elite_scores) + 1e-8))
-                weights = exp_scores / np.sum(exp_scores)
-                mbest = np.sum(elite_pbest * weights[:, np.newaxis], axis=0)
+                # Quantum position update step
+                particles[i] = p + sign * alpha * np.abs(mbest - particles[i]) * np.log(1.0 / u)
                 
-                for i in range(self.n_particles):
-                    phi = self.rng.uniform(0, 1, dimensions)
-                    p = phi * pbest[i] + (1 - phi) * gbest
-                    u = np.maximum(self.rng.uniform(0, 1, dimensions), np.finfo(float).tiny)
-                    sign = np.where(self.rng.random(dimensions) > 0.5, 1, -1)
-                    particles[i] = p + sign * alpha * np.abs(mbest - particles[i]) * np.log(1.0 / u)
-                    particles[i] = np.clip(particles[i], 0.0, 1.0)
+                # FIX 1: Rank Re-normalization to prevent [0, 1] clipping flatline collapse
+                ranks = np.argsort(np.argsort(particles[i]))
+                particles[i] = ranks / float(max(1, D - 1))
                 
-                iter_args = [(particles[i],) + worker_args_template for i in range(self.n_particles)]
-                results = list(executor.map(_thread_evaluate, iter_args))
+                score = _evaluate_particle(particles[i], *eval_args)
                 
-                improved = False
-                for i, (score, _) in enumerate(results):
-                    if score < pbest_scores[i]:
-                        pbest[i] = particles[i].copy()
-                        pbest_scores[i] = score
-                        if score < gbest_score:
-                            gbest = particles[i].copy()
-                            gbest_score = score
-                            improved = True
-                            
-                if not improved:
-                    stagnation_counter += 1
-                else:
-                    stagnation_counter = 0
-                            
-                history.append(gbest_score)
+                if score < pbest_scores[i]:
+                    pbest[i] = particles[i].copy()
+                    pbest_scores[i] = score
+                    if score < gbest_score:
+                        gbest = particles[i].copy()
+                        gbest_score = score
+
+            # FIX 2: Periodic 2-Opt local permutation swap on Global Best
+            if (it + 1) % 5 == 0 and D >= 4:
+                perm = np.argsort(gbest)
+                i_swap, j_swap = sorted(self.rng.choice(D, size=2, replace=False))
+                perm[i_swap], perm[j_swap] = perm[j_swap], perm[i_swap]
                 
+                cand_pos = np.empty(D, dtype=np.float64)
+                cand_pos[perm] = np.linspace(0.0, 1.0, D)
+                
+                cand_score = _evaluate_particle(cand_pos, *eval_args)
+                if cand_score < gbest_score:
+                    gbest = cand_pos.copy()
+                    gbest_score = cand_score
+
+            history.append(gbest_score)
+            
         return gbest, gbest_score, history

@@ -93,14 +93,15 @@ def construct_feasible_order(instance: VRPInstance):
     return [index for _, members in bins for index in members]
 
 def split_random_key_solution(order, instance: VRPInstance):
-    if instance.vehicle_capacity <= 0:
+    if instance.vehicle_capacity <= 0 or not order:
         return None
-    if any(c.demand < 0 or c.demand > instance.vehicle_capacity for c in order):
-        return None
+    
     routes = []
     current = [instance.depot]
     load = 0.0
+    
     for customer in order:
+        # STRICT BOUND: Never allow load to exceed vehicle_capacity during splitting
         if load + customer.demand <= instance.vehicle_capacity:
             current.append(customer.node)
             load += customer.demand
@@ -109,27 +110,28 @@ def split_random_key_solution(order, instance: VRPInstance):
             routes.append(current)
             current = [instance.depot, customer.node]
             load = customer.demand
+
     current.append(instance.depot)
     routes.append(current)
-    if len(routes) > instance.num_vehicles:
-        return None
+
+    # Pad with empty routes up to num_vehicles
     while len(routes) < instance.num_vehicles:
         routes.append([instance.depot, instance.depot])
+
     return routes
 
 @jit(nopython=True, fastmath=True, nogil=True)
 def evaluate_routes_kernel(route_indices_flat, route_lens, demands, tw_starts, tw_ends, service_times,
                            dist_matrix, time_matrix, vehicle_capacity, time_weight, distance_weight,
                            dispatch_start_s, lateness_penalty_per_min):
-    """
-    Numba-compiled inner evaluation kernel operating on raw NumPy arrays in C speed.
-    """
     total_time = 0.0
     total_distance = 0.0
     total_service = 0.0
     total_waiting = 0.0
     total_lateness = 0.0
+    total_capacity_penalty = 0.0
     offset = 0
+    
     for r_idx in range(len(route_lens)):
         length = route_lens[r_idx]
         if length <= 2:
@@ -153,12 +155,11 @@ def evaluate_routes_kernel(route_indices_flat, route_lens, demands, tw_starts, t
             dist = dist_matrix[u_idx, v_idx]
             
             if not np.isfinite(travel_time) or not np.isfinite(dist):
-                return 1e18, 1e18, 1e18, 1e18, 1e18, 1e18, 1e18
+                return 1e12, 1e12, 1e12, 1e12, 1e12, 1e12, 1e12
             total_time += travel_time
             total_distance += dist
             current_time += travel_time
             
-            # v_idx == 0 is depot
             if v_idx > 0:
                 cust_real_idx = v_idx - 1
                 route_demand += demands[cust_real_idx]
@@ -174,13 +175,17 @@ def evaluate_routes_kernel(route_indices_flat, route_lens, demands, tw_starts, t
                     
                 current_time += r_serv
                 total_service += r_serv
-        if route_demand > vehicle_capacity + 1e-5:
-            return 1e18, 1e18, 1e18, 1e18, 1e18, 1e18, 1e18
+                
+        # SOFT PENALTY GRADIENT: Penalize capacity overages gradually instead of returning 1e18
+        if route_demand > vehicle_capacity:
+            total_capacity_penalty += (route_demand - vehicle_capacity) * 100000.0
+
     tw_penalty = (total_lateness / 60.0) * lateness_penalty_per_min
     objective = (
         time_weight * (total_time + total_waiting + total_service) +
         distance_weight * total_distance +
-        tw_penalty
+        tw_penalty +
+        total_capacity_penalty
     )
     return objective, total_time, total_distance, total_service, total_waiting, tw_penalty, total_lateness
 
@@ -189,10 +194,6 @@ def evaluate_routes(routes, instance, costs, distances, paths,
                     congestion_weight=0.0, travel_times=None,
                     dispatch_start_s=32400.0,
                     lateness_penalty_per_min=10000.0):
-    """
-    Objective = weighted travel time + distance + time window penalties.
-    Fully compatible fallback for heuristics and standard evaluators.
-    """
     if routes is None:
         return math.inf, {"objective": math.inf}
     travel_times = travel_times or costs
