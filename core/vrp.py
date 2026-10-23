@@ -243,23 +243,39 @@ def evaluate_routes(routes, instance, costs, distances, paths,
         "objective": objective,
     }
 
+# core/vrp.py
+
 def optimize_route_2opt(route, costs):
+    """
+    Applies 2-opt local search to a single vehicle route to eliminate 
+    overlapping edges using O(1) delta evaluation.
+    """
     if len(route) < 4:
         return route
+        
     best_route = list(route)
     improved = True
+    
     while improved:
         improved = False
         for i in range(1, len(best_route) - 2):
+            # Keep the depot fixed at both ends of the route.
             for j in range(i + 1, len(best_route) - 1):
-                if j - i == 1: continue 
-                new_route = best_route[:i] + list(reversed(best_route[i:j + 1])) + best_route[j + 1:]
-                old_cost = sum(costs.get((best_route[k], best_route[k+1]), math.inf) for k in range(len(best_route)-1))
-                new_cost = sum(costs.get((new_route[k], new_route[k+1]), math.inf) for k in range(len(new_route)-1))
-                if new_cost < old_cost:
-                    best_route = new_route
+                if j - i == 1: 
+                    continue 
+                
+                # O(1) Delta evaluation instead of full route sum
+                edge1_old = costs.get((best_route[i - 1], best_route[i]), math.inf)
+                edge2_old = costs.get((best_route[j], best_route[j + 1]), math.inf)
+                edge1_new = costs.get((best_route[i - 1], best_route[j]), math.inf)
+                edge2_new = costs.get((best_route[i], best_route[j + 1]), math.inf)
+                
+                if edge1_new + edge2_new < edge1_old + edge2_old:
+                    # Reverse the segment between i and j
+                    best_route = best_route[:i] + list(reversed(best_route[i:j + 1])) + best_route[j + 1:]
                     improved = True
                     break
             if improved:
                 break
+                
     return best_route

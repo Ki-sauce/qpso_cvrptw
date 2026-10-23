@@ -193,7 +193,7 @@ export default function VRPDashboard() {
                 <Truck className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="scroll-m-20 text-xl font-semibold tracking-tight">QPSO Dispatch Platform</h1>
+                <h1 className="scroll-m-20 text-xl font-semibold tracking-tight">Quantum-Neural Logistics Engine</h1>
                 <p className="text-sm text-muted-foreground leading-none mt-1">Enterprise Route Optimizer</p>
               </div>
             </div>
