@@ -195,30 +195,49 @@ def solve_ga_baseline(
     print(profiler.summary())
     return payload
 
-def flatten_instance_for_jit(instance, distances_dict, travel_times_dict):
-    """Converts OOP classes and dictionaries into flat Numpy arrays for Numba."""
-    n_nodes = len(instance.customers) + 1 # +1 for depot
-    
+def flatten_instance_for_jit(
+    instance, distances_dict, travel_times_dict,
+    time_weight=1.0, distance_weight=0.0,
+    lateness_penalty=10000.0, dispatch_start_s=32400.0,
+    depot_due_time=86400.0
+):
+    """Converts OOP classes and dictionaries into the exact 12-tuple expected by Numba JIT."""
+    n_nodes = len(instance.customers) + 1  # Node 0 is depot
+
     distance_matrix = np.zeros((n_nodes, n_nodes), dtype=np.float32)
     time_matrix = np.zeros((n_nodes, n_nodes), dtype=np.float32)
-    
-    # Customer arrays (Index 0 is Depot padding, so indices align with nodes)
+
     demands = np.zeros(n_nodes, dtype=np.float32)
     ready_times = np.zeros(n_nodes, dtype=np.float32)
     due_times = np.zeros(n_nodes, dtype=np.float32)
     service_times = np.zeros(n_nodes, dtype=np.float32)
-    
+
+    ready_times[0] = float(dispatch_start_s)
+    due_times[0] = float(depot_due_time)
+
     for i in range(n_nodes):
         for j in range(n_nodes):
             distance_matrix[i, j] = distances_dict.get((i, j), np.inf)
             time_matrix[i, j] = travel_times_dict.get((i, j), np.inf)
-            
+
     for c in instance.customers:
         idx = c.node
         demands[idx] = c.demand
         ready_times[idx] = c.ready_time
         due_times[idx] = c.due_time
         service_times[idx] = c.service_time
-        
-    return (demands, instance.vehicle_capacity, instance.num_vehicles,
-            distance_matrix, time_matrix, ready_times, due_times, service_times)
+
+    return (
+        demands,
+        float(instance.vehicle_capacity),
+        int(instance.num_vehicles),
+        distance_matrix,
+        time_matrix,
+        ready_times,
+        due_times,
+        service_times,
+        float(time_weight),
+        float(distance_weight),
+        float(lateness_penalty),
+        float(dispatch_start_s),
+    )

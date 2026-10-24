@@ -13,6 +13,8 @@ matplotlib>=3.8,<4
 streamlit>=1.40,<2
 torch
 numba
+pyvrp
+vrplib
 
 fastapi>=0.115,<1
 pydantic>=2.7,<3

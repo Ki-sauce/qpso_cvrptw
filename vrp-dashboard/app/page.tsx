@@ -250,7 +250,7 @@ export default function VRPDashboard() {
                   value={slaStrictness} 
                   onValueChange={(v) => safeSetArray(v, setSlaStrictness)} 
                   min={1} max={8} step={0.5} 
-                  className="cursor-grab active:cursor-grabbing"
+                  className=""
                 />
               </div>
               <div className="space-y-3 pt-2">
@@ -262,7 +262,7 @@ export default function VRPDashboard() {
                   value={customersN} 
                   onValueChange={(v) => safeSetArray(v, setCustomersN)} 
                   min={4} max={500} step={1} 
-                  className="cursor-grab active:cursor-grabbing"
+                  className="cursor-grab"
                 />
               </div>
 
@@ -276,7 +276,7 @@ export default function VRPDashboard() {
                     value={vehicles} 
                     onValueChange={(v) => safeSetArray(v, setVehicles)} 
                     min={1} max={200} step={1} 
-                    className="cursor-grab active:cursor-grabbing"
+                    className="cursor-grab "
                   />
                 </div>
                 <div className="space-y-3">
@@ -288,7 +288,7 @@ export default function VRPDashboard() {
                     value={capacity} 
                     onValueChange={(v) => safeSetArray(v, setCapacity)} 
                     min={5} max={100} step={1} 
-                    className="cursor-grab active:cursor-grabbing"
+                    className="cursor-grab "
                   />
                 </div>
               </div>
@@ -335,7 +335,7 @@ export default function VRPDashboard() {
                   value={distanceWeight} 
                   onValueChange={(v) => safeSetArray(v, setDistanceWeight)} 
                   min={0} max={1} step={0.05} 
-                  className="cursor-grab active:cursor-grabbing"
+                  className="cursor-grab "
                 />
               </div>
 
@@ -349,7 +349,7 @@ export default function VRPDashboard() {
                     value={particles} 
                     onValueChange={(v) => safeSetArray(v, setParticles)} 
                     min={10} max={1000} step={10} 
-                    className="cursor-grab active:cursor-grabbing"
+                    className="cursor-grab "
                   />
                 </div>
                 <div className="space-y-3">
@@ -361,7 +361,7 @@ export default function VRPDashboard() {
                     value={iterations} 
                     onValueChange={(v) => safeSetArray(v, setIterations)} 
                     min={20} max={1000} step={20} 
-                    className="cursor-grab active:cursor-grabbing"
+                    className="cursor-grab "
                   />
                 </div>
               </div>
